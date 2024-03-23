@@ -14,7 +14,3 @@ Decrypt appstore apps for TrollStore
 ```
 $ make package
 ```
-
-## Credit / Thanks
-- [dumpdecrypted](https://github.com/stefanesser/dumpdecrypted) by Stefan Esser
-- [bfdecrypt](https://github.com/BishopFox/bfdecrypt) by BishopFox
