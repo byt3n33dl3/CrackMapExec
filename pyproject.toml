@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "crackmapexec"
+version = "6.1.0"
+description = "A swiss army knife for pentesting networks"
+authors = ["Marcello Salvati <byt3bl33d3r@pm.com>", "Martial Puygrenier <mpgn@protonmail.com>"]
+readme = "README.md"
+homepage = "https://github.com/mpgn/CrackMapExec"
+repository = "https://github.com/mpgn/CrackMapExec"
+exclude = []
+include = ["cme/data/*", "cme/modules/*"]
+license = "BSD-2-Clause"
+classifiers = [
+    'Environment :: Console',
+    'License :: OSI Approved :: BSD License',
+    'Programming Language :: Python :: 3',
+    'Topic :: Security',
+]
+packages = [
+    { include = "cme"}
+]
+
+[tool.poetry.scripts]
+cme = 'cme.crackmapexec:main'
+crackmapexec = 'cme.crackmapexec:main'
+cmedb = 'cme.cmedb:main'
+
+[tool.poetry.dependencies]
+python = "^3.7.0"
+requests = ">=2.27.1"
+beautifulsoup4 = ">=4.11,<5"
+lsassy = ">=3.1.8"
+termcolor = "^1.1.0"
+msgpack = "^1.0.0"
+neo4j = "^4.1.1"
+pylnk3 = "^0.4.2"
+pypsrp = "^0.7.0"
+paramiko = "^2.7.2"
+impacket =  { git = "https://github.com/mpgn/impacket.git", branch = "gkdi" }
+dsinternals = "^1.2.4"
+xmltodict = "^0.12.0"
+terminaltables = "^3.1.0"
+aioconsole = "^0.3.3"
+pywerview = "^0.3.3"
+minikerberos = "^0.4.0"
+pypykatz = "^0.6.8"
+aardwolf = "^0.2.7"
+dploot = "^2.2.1"
+bloodhound = "^1.6.1"
+asyauth = "~0.0.13"
+masky = "^0.2.0"
+sqlalchemy = "^2.0.4"
+aiosqlite = "^0.18.0"
+pyasn1-modules = "^0.3.0"
+rich = "^13.3.5"
+python-libnmap = "^0.7.3"
+resource = "^0.2.1"
+oscrypto = { git = "https://github.com/NeffIsBack/oscrypto" }
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "*"
+pylint = "*"
+shiv = "*"
+black = "^20.8b1"
+pytest = "^7.2.2"
+
+[build-system]
+requires = ["poetry-core>=1.2.0"]
+build-backend = "poetry.core.masonry.api"
