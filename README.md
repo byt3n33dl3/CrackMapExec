@@ -32,11 +32,11 @@ Unintentional contributors:
 - @T-S-A's [smbspider](https://github.com/T-S-A/smbspider) script
 - @ConsciousHacker's partial Python port of Invoke-obfuscation from the [GreatSCT](https://github.com/GreatSCT/GreatSCT) project
 
-You are on the **latest up-to-date** repository of the project CrackMapExec ! 🎉
+You are on the **latest up-to-date** CrackMapExec
 
-- If you want to report a problem, open un [Issue](https://github.com/mpgn/CrackMapExec/issues) 
-- If you want to contribute, open a [Pull Request](https://github.com/mpgn/CrackMapExec/pulls)
-- If you want to discuss, open a [Discussion](https://github.com/mpgn/CrackMapExec/discussions)
+- If you want to report a problem, open un [Issue](https://github.com/pxcs/CrackMapExec/issues) 
+- If you want to contribute, open a [Pull Request](https://github.com/pxcs/CrackMapExec/pulls)
+- If you want to discuss, open a [Discussion](https://github.com/pxcs/CrackMapExec/discussions)
 
 ## Documentation, Tutorials, Examples
 See the project's [wiki](https://www.crackmapexec.wiki/) for documentation and usage examples
