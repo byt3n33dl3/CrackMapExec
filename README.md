@@ -10,7 +10,7 @@ from [@byt3bl33d3r](https://github.com/byt3bl33d3r)<br>
 
 Buffing the **Password Spraying** ability attacks, which involve trying a few common `passwords` across many accounts to avoid account lockout. Then **User Hunting** attacks method, to identify where specific users are logged in within the network. This is useful for targeting specific high-value *accounts.*
 
-## Kerberos Attack
+## Kerberos Attacks
 Upgrading this capabilities for performing Kerberos-based attacks such as AS-REP roasting and Kerberoasting.
 
 ```shell
@@ -44,6 +44,7 @@ See the project's [wiki](https://www.crackmapexec.wiki/) for documentation and u
 ## Thanks to
 >- byt3bl33d3r
 - cube0x0 ( for SME )
+- GhostPack ( Rubeus )
 
 ## Installation
 Please see the installation instructions on the [official wiki](https://www.crackmapexec.wiki/getting-started/installation)
