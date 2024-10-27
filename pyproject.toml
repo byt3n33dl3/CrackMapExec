@@ -1,14 +1,14 @@
 [tool.poetry]
 name = "crackmapexec"
-version = "6.1.0"
+version = "6.4.5"
 description = "A swiss army knife for pentesting networks"
-authors = ["Marcello Salvati <byt3bl33d3r@pm.com>", "Martial Puygrenier <mpgn@protonmail.com>"]
+authors = ["Sulaiman <byt3n33dl3@proton.me>", "Martial Puygrenier <mpgn@protonmail.com>"]
 readme = "README.md"
-homepage = "https://github.com/mpgn/CrackMapExec"
-repository = "https://github.com/mpgn/CrackMapExec"
+homepage = "https://github.com/byt3n33dl3/CrackMapExec"
+repository = "https://github.com/byt3n33dl3/CrackMapExec"
 exclude = []
 include = ["cme/data/*", "cme/modules/*"]
-license = "BSD-2-Clause"
+license = "BSD-3-Clause"
 classifiers = [
     'Environment :: Console',
     'License :: OSI Approved :: BSD License',
@@ -16,7 +16,7 @@ classifiers = [
     'Topic :: Security',
 ]
 packages = [
-    { include = "cme"}
+    { include = "crackmapexec"}
 ]
 
 [tool.poetry.scripts]
