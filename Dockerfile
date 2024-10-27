@@ -9,14 +9,11 @@ WORKDIR /usr/src/crackmapexec
 RUN apt-get update && \
     apt-get install -y libffi-dev libxml2-dev libxslt-dev libssl-dev openssl autoconf g++ python3-dev curl git
 RUN apt-get update
-# Get Rust
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
-# Add .cargo/bin to PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
-# Check cargo is visible
 RUN cargo --help
 
 COPY . .
 RUN pip install .
 
-ENTRYPOINT [ "cme" ]
+ENTRYPOINT [ "crackmapexec" ]
