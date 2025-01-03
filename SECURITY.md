@@ -1,4 +1,4 @@
-```shell
+```py
   ______ .______          ___       ______  __  ___ .___  ___.      ___      .______    __________   ___  _______   ______ 
  /      ||   _  \        /   \     /      ||  |/  / |   \/   |     /   \     |   _  \  |   ____\  \ /  / |   ____| /      |
 |  ,----'|  |_)  |      /  ^  \   |  ,----'|  '  /  |  \  /  |    /  ^  \    |  |_)  | |  |__   \  V  /  |  |__   |  ,----'
@@ -8,4 +8,6 @@
                                                                                                                            
 ```
 
-# CrackMapExec
+# CrackMapExec Security
+
+Report and Issues at [byt3n33dl3@pm.me](mailto:byt3n33dl3@proton.me). Part of Offensive Security

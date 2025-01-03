@@ -8,8 +8,6 @@
 
 [![License: BSD 3-Clause](https://img.shields.io/badge/License-BSDv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-from [@byt3bl33d3r](https://github.com/byt3bl33d3r)<br>
-
 Buffing the **Password Spraying** ability attacks, which involve trying a few common `passwords` across many accounts to avoid account lockout. Then **User Hunting** attacks method, to identify where specific users are logged in within the network. This is useful for targeting specific high-value *accounts.*
 
 ## Kerberos Attacks
@@ -44,7 +42,7 @@ You are on the **latest up-to-date** CrackMapExec
 See the project's [wiki](https://www.crackmapexec.wiki/) for documentation and usage examples
 
 ## Thanks to
->- byt3bl33d3r
+- Marcello
 - cube0x0 ( for SME )
 - GhostPack ( Rubeus )
 
@@ -54,7 +52,7 @@ Please see the installation instructions on the [official wiki](https://www.crac
 ```shell
 git clone https://github.com/byt3n33dl3/CrackMapExec
 cd CrackMapExec
-python3 build_collector.py
+python3 crackmapexec
 ```
 
 ## Code Contributors
