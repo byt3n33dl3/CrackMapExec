@@ -1,13 +1,14 @@
-import sys, time
+import sys
+import time
 
-from cme.logger import CMEAdapter
+from nxc.logger import NXCAdapter
 from bloodhound.ad.domain import ADDC
 from bloodhound.enumeration.computers import ComputerEnumerator
 from bloodhound.enumeration.memberships import MembershipEnumerator
 from bloodhound.enumeration.domains import DomainEnumerator
 
 
-class BloodHound(object):
+class BloodHound:
     def __init__(self, ad, hostname, host, port):
         self.ad = ad
         self.ldap = None
@@ -18,7 +19,7 @@ class BloodHound(object):
         self.proto_logger(port, hostname, host)
 
     def proto_logger(self, port, hostname, host):
-        self.logger = CMEAdapter(extra={"protocol": "LDAP", "host": host, "port": port, "hostname": hostname})
+        self.logger = NXCAdapter(extra={"protocol": "LDAP", "host": host, "port": port, "hostname": hostname})
 
     def connect(self):
         if len(self.ad.dcs()) == 0:
@@ -43,18 +44,7 @@ class BloodHound(object):
         # Create an object resolver
         self.ad.create_objectresolver(self.pdc)
 
-    #        self.pdc.ldap_connect(self.ad.auth.username, self.ad.auth.password, kdc)
-
-    def run(
-        self,
-        collect,
-        num_workers=10,
-        disable_pooling=False,
-        timestamp="",
-        computerfile="",
-        cachefile=None,
-        exclude_dcs=False,
-    ):
+    def run(self, collect, num_workers=10, disable_pooling=False, timestamp="", fileNamePrefix="", computerfile="", cachefile=None, exclude_dcs=False):
         start_time = time.time()
         if cachefile:
             self.ad.load_cachefile(cachefile)
@@ -82,7 +72,7 @@ class BloodHound(object):
             )
             # Initialize enumerator
             membership_enum = MembershipEnumerator(self.ad, self.pdc, collect, disable_pooling)
-            membership_enum.enumerate_memberships(timestamp=timestamp)
+            membership_enum.enumerate_memberships(timestamp=timestamp, fileNamePrefix=fileNamePrefix)
         elif "container" in collect:
             # Fetch domains for later, computers if needed
             self.pdc.prefetch_info(
@@ -92,7 +82,7 @@ class BloodHound(object):
             )
             # Initialize enumerator
             membership_enum = MembershipEnumerator(self.ad, self.pdc, collect, disable_pooling)
-            membership_enum.do_container_collection(timestamp=timestamp)
+            membership_enum.do_container_collection(timestamp=timestamp, fileNamePrefix=fileNamePrefix)
         elif do_computer_enum:
             # We need to know which computers to query regardless
             # We also need the domains to have a mapping from NETBIOS -> FQDN for local admins
@@ -102,7 +92,7 @@ class BloodHound(object):
             self.pdc.get_domains("acl" in collect)
         if "trusts" in collect or "acl" in collect or "objectprops" in collect:
             trusts_enum = DomainEnumerator(self.ad, self.pdc)
-            trusts_enum.dump_domain(collect, timestamp=timestamp)
+            trusts_enum.dump_domain(collect, timestamp=timestamp, fileNamePrefix=fileNamePrefix)
         if do_computer_enum:
             # If we don't have a GC server, don't use it for deconflictation
             have_gc = len(self.ad.gcs()) > 0
@@ -114,7 +104,7 @@ class BloodHound(object):
                 computerfile=computerfile,
                 exclude_dcs=exclude_dcs,
             )
-            computer_enum.enumerate_computers(self.ad.computers, num_workers=num_workers, timestamp=timestamp)
+            computer_enum.enumerate_computers(self.ad.computers, num_workers=num_workers, timestamp=timestamp, fileNamePrefix=fileNamePrefix)
         end_time = time.time()
         minutes, seconds = divmod(int(end_time - start_time), 60)
         self.logger.highlight("Done in %02dM %02dS" % (minutes, seconds))

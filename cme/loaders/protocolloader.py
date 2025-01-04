@@ -1,16 +1,14 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from types import ModuleType
 from importlib.machinery import SourceFileLoader
 from os import listdir
 from os.path import join as path_join
 from os.path import dirname, exists, expanduser
-import cme
+import nxc
 
 
 class ProtocolLoader:
     def __init__(self):
-        self.cme_path = expanduser("~/.cme")
+        self.nxc_path = expanduser("~/.nxc")
 
     def load_protocol(self, protocol_path):
         loader = SourceFileLoader("protocol", protocol_path)
@@ -21,8 +19,8 @@ class ProtocolLoader:
     def get_protocols(self):
         protocols = {}
         protocol_paths = [
-            path_join(dirname(cme.__file__), "protocols"),
-            path_join(self.cme_path, "protocols"),
+            path_join(dirname(nxc.__file__), "protocols"),
+            path_join(self.nxc_path, "protocols"),
         ]
 
         for path in protocol_paths:

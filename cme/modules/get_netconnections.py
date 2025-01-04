@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from datetime import datetime
-from cme.helpers.logger import write_log
+from nxc.helpers.logger import write_log
 import json
 
 
-class CMEModule:
+class NXCModule:
     """
     Uses WMI to extract network connections, used to find multi-homed hosts.
     Module by @fang0654
@@ -20,14 +17,11 @@ class CMEModule:
     multiple_hosts = True
 
     def options(self, context, module_options):
-        """
-        No options
-        """
-        pass
+        """No options"""
 
     def on_admin_login(self, context, connection):
         data = []
-        cards = connection.wmi(f"select DNSDomainSuffixSearchOrder, IPAddress from win32_networkadapterconfiguration")
+        cards = connection.wmi("select DNSDomainSuffixSearchOrder, IPAddress from win32_networkadapterconfiguration")
         if cards:
             for c in cards:
                 if c["IPAddress"].get("value"):
@@ -35,6 +29,6 @@ class CMEModule:
 
             data.append(cards)
 
-        log_name = "network-connections-{}-{}.log".format(connection.host, datetime.now().strftime("%Y-%m-%d_%H%M%S"))
+        log_name = f"network-connections-{connection.host}-{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.log"
         write_log(json.dumps(data), log_name)
-        context.log.display(f"Saved raw output to ~/.cme/logs/{log_name}")
+        context.log.display(f"Saved raw output to ~/.nxc/logs/{log_name}")

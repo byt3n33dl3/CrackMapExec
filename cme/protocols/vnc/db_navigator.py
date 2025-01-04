@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-from cme.cmedb import DatabaseNavigator, print_help
+from nxc.nxcdb import DatabaseNavigator, print_help
 
 
 class navigator(DatabaseNavigator):

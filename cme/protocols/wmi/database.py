@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import MetaData, Table
@@ -9,7 +6,8 @@ from sqlalchemy.exc import (
     NoInspectionAvailable,
     NoSuchTableError,
 )
-from cme.logger import cme_logger
+from nxc.logger import nxc_logger
+import sys
 
 
 class database:
@@ -48,7 +46,7 @@ class database:
         )
 
     def reflect_tables(self):
-        with self.db_engine.connect() as conn:
+        with self.db_engine.connect():
             try:
                 self.CredentialsTable = Table("credentials", self.metadata, autoload_with=self.db_engine)
                 self.HostsTable = Table("hosts", self.metadata, autoload_with=self.db_engine)
@@ -56,20 +54,20 @@ class database:
                 print(
                     f"""
                     [-] Error reflecting tables for the {self.protocol} protocol - this means there is a DB schema mismatch
-                    [-] This is probably because a newer version of CME is being ran on an old DB schema
-                    [-] Optionally save the old DB data (`cp {self.db_path} ~/cme_{self.protocol.lower()}.bak`)
-                    [-] Then remove the CME {self.protocol} DB (`rm -f {self.db_path}`) and run CME to initialize the new DB"""
+                    [-] This is probably because a newer version of nxc is being run on an old DB schema
+                    [-] Optionally save the old DB data (`cp {self.db_path} ~/nxc_{self.protocol.lower()}.bak`)
+                    [-] Then remove the nxc {self.protocol} DB (`rm -f {self.db_path}`) and run nxc to initialize the new DB"""
                 )
-                exit()
+                sys.exit()
 
     def shutdown_db(self):
         try:
             self.conn.close()
-        # due to the async nature of CME, sometimes session state is a bit messy and this will throw:
+        # due to the async nature of nxc, sometimes session state is a bit messy and this will throw:
         # Method 'close()' can't be called here; method '_connection_for_bind()' is already in progress and
         # this would cause an unexpected state change to <SessionTransactionState.CLOSED: 5>
         except IllegalStateChangeError as e:
-            cme_logger.debug(f"Error while closing session db object: {e}")
+            nxc_logger.debug(f"Error while closing session db object: {e}")
 
     def clear_database(self):
         for table in self.metadata.sorted_tables:

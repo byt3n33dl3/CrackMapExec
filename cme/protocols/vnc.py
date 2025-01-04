@@ -1,15 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import asyncio
 import os
 from datetime import datetime
 
 from aardwolf.commons.target import RDPTarget
 
-from cme.connection import *
-from cme.helpers.logger import highlight
-from cme.logger import CMEAdapter
+from nxc.connection import connection
+from nxc.helpers.logger import highlight
+from nxc.logger import NXCAdapter
 from aardwolf.vncconnection import VNCConnection
 from aardwolf.commons.iosettings import RDPIOSettings
 from aardwolf.commons.queuedata.constants import VIDEO_FORMAT
@@ -34,16 +31,19 @@ class vnc(connection):
             self.print_host_info()
             if self.login():
                 if hasattr(self.args, "module") and self.args.module:
+                    self.load_modules()
+                    self.logger.debug("Calling modules")
                     self.call_modules()
                 else:
+                    self.logger.debug("Calling command arguments")
                     self.call_cmd_args()
 
     def proto_logger(self):
-        self.logger = CMEAdapter(
+        self.logger = NXCAdapter(
             extra={
                 "protocol": "VNC",
                 "host": self.host,
-                "port": self.args.port,
+                "port": self.port,
                 "hostname": self.hostname,
             }
         )
@@ -53,7 +53,7 @@ class vnc(connection):
 
     def create_conn_obj(self):
         try:
-            self.target = RDPTarget(ip=self.host, port=self.args.port)
+            self.target = RDPTarget(ip=self.host, port=self.port)
             credential = UniCredential(protocol=asyauthProtocol.PLAIN, stype=asyauthSecret.NONE)
             self.conn = VNCConnection(target=self.target, credentials=credential, iosettings=self.iosettings)
             asyncio.run(self.connect_vnc(True))
@@ -88,7 +88,7 @@ class vnc(connection):
             self.logger.success(
                 "{} {}".format(
                     password,
-                    highlight(f"({self.config.get('CME', 'pwn3d_label')})" if self.admin_privs else ""),
+                    highlight(f"({self.config.get('nxc', 'pwn3d_label')})" if self.admin_privs else ""),
                 )
             )
             return True
@@ -99,7 +99,7 @@ class vnc(connection):
                 self.logger.success(
                     "{} {}".format(
                         "No password seems to be accepted by the server",
-                        highlight(f"({self.config.get('CME', 'pwn3d_label')})" if self.admin_privs else ""),
+                        highlight(f"({self.config.get('nxc', 'pwn3d_label')})" if self.admin_privs else ""),
                     )
                 )
             else:
@@ -112,7 +112,7 @@ class vnc(connection):
         await asyncio.sleep(int(self.args.screentime))
         if self.conn is not None and self.conn.desktop_buffer_has_data is True:
             buffer = self.conn.get_desktop_buffer(VIDEO_FORMAT.PIL)
-            filename = os.path.expanduser(f"~/.cme/screenshots/{self.hostname}_{self.host}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.png")
+            filename = os.path.expanduser(f"~/.nxc/screenshots/{self.hostname}_{self.host}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.png")
             buffer.save(filename, "png")
             self.logger.highlight(f"Screenshot saved {filename}")
 

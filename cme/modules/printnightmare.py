@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import sys
 from impacket import system_errors
-from impacket.dcerpc.v5.rpcrt import DCERPCException
+from impacket.dcerpc.v5.rpcrt import DCERPCException, RPC_C_AUTHN_GSS_NEGOTIATE, rpc_status_codes
 from impacket.structure import Structure
 from impacket.dcerpc.v5 import transport, rprn
 from impacket.dcerpc.v5.ndr import NDRCALL, NDRPOINTER, NDRSTRUCT, NDRUNION, NULL
@@ -16,7 +13,7 @@ KNOWN_PROTOCOLS = {
 }
 
 
-class CMEModule:
+class NXCModule:
     """
     Check if vulnerable to printnightmare
     Module by @mpgn_x64 based on https://github.com/ly4k/PrintNightmare
@@ -35,18 +32,17 @@ class CMEModule:
         self.port = None
 
     def options(self, context, module_options):
-        """
-        PORT    Port to check (defaults to 445)
-        """
+        """PORT    Port to check (defaults to 445)"""
         self.port = 445
         if "PORT" in module_options:
             self.port = int(module_options["PORT"])
 
     def on_login(self, context, connection):
         # Connect and bind to MS-RPRN (https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-rprn/848b8334-134a-4d02-aea4-03b673d6c515)
-        stringbinding = r"ncacn_np:%s[\PIPE\spoolss]" % connection.host
+        target = connection.host if not connection.kerberos else connection.hostname + "." + connection.domain
+        stringbinding = r"ncacn_np:%s[\PIPE\spoolss]" % target
 
-        context.log.info("Binding to %s" % (repr(stringbinding)))
+        context.log.info(f"Binding to {stringbinding!r}")
 
         rpctransport = transport.DCERPCTransportFactory(stringbinding)
 
@@ -60,18 +56,19 @@ class CMEModule:
         )
 
         rpctransport.set_kerberos(connection.kerberos, kdcHost=connection.kdcHost)
-
-        rpctransport.setRemoteHost(connection.host)
+        rpctransport.setRemoteHost(target)
         rpctransport.set_dport(self.port)
 
         try:
             dce = rpctransport.get_dce_rpc()
+            if connection.kerberos:
+                dce.set_auth_type(RPC_C_AUTHN_GSS_NEGOTIATE)
             # Connect to spoolss named pipe
             dce.connect()
             # Bind to MSRPC MS-RPRN UUID: 12345678-1234-ABCD-EF00-0123456789AB
             dce.bind(rprn.MSRPC_UUID_RPRN)
         except Exception as e:
-            context.log.fail("Failed to bind: %s" % e)
+            context.log.fail(f"Failed to bind: {e}")
             sys.exit(1)
 
         flags = APD_COPY_ALL_FILES | APD_COPY_FROM_DIRECTORY | APD_INSTALL_WARNED_DRIVER
@@ -105,7 +102,12 @@ class CMEModule:
             if e.error_code == system_errors.ERROR_INVALID_PARAMETER:
                 context.log.highlight("Vulnerable, next step https://github.com/ly4k/PrintNightmare")
                 return True
-            raise e
+            context.log.fail(f"Unexpected error: {e}")
+        except DCERPCException as e:
+            if rpc_status_codes[e.error_code] == "rpc_s_access_denied":
+                context.log.info("Not vulnerable :'(")
+                return False
+            context.log.fail(f"Unexpected error: {e}")
         context.log.highlight("Vulnerable, next step https://github.com/ly4k/PrintNightmare")
         return True
 
@@ -119,13 +121,9 @@ class DCERPCSessionError(DCERPCException):
         if key in system_errors.ERROR_MESSAGES:
             error_msg_short = system_errors.ERROR_MESSAGES[key][0]
             error_msg_verbose = system_errors.ERROR_MESSAGES[key][1]
-            return "RPRN SessionError: code: 0x%x - %s - %s" % (
-                self.error_code,
-                error_msg_short,
-                error_msg_verbose,
-            )
+            return f"RPRN SessionError: code: 0x{self.error_code:x} - {error_msg_short} - {error_msg_verbose}"
         else:
-            return "RPRN SessionError: unknown error code: 0x%x" % self.error_code
+            return f"RPRN SessionError: unknown error code: 0x{self.error_code:x}"
 
 
 ################################################################################
@@ -191,26 +189,26 @@ class DRIVER_INFO_2_BLOB(Structure):
     def fromString(self, data, offset=0):
         Structure.fromString(self, data)
 
-        name = data[self["NameOffset"] + offset :].decode("utf-16-le")
+        name = data[self["NameOffset"] + offset:].decode("utf-16-le")
         name_len = name.find("\0")
         self["Name"] = checkNullString(name[:name_len])
 
-        self["ConfigFile"] = data[self["ConfigFileOffset"] + offset : self["DataFileOffset"] + offset].decode("utf-16-le")
-        self["DataFile"] = data[self["DataFileOffset"] + offset : self["DriverPathOffset"] + offset].decode("utf-16-le")
-        self["DriverPath"] = data[self["DriverPathOffset"] + offset : self["EnvironmentOffset"] + offset].decode("utf-16-le")
-        self["Environment"] = data[self["EnvironmentOffset"] + offset : self["NameOffset"] + offset].decode("utf-16-le")
+        self["ConfigFile"] = data[self["ConfigFileOffset"] + offset: self["DataFileOffset"] + offset].decode("utf-16-le")
+        self["DataFile"] = data[self["DataFileOffset"] + offset: self["DriverPathOffset"] + offset].decode("utf-16-le")
+        self["DriverPath"] = data[self["DriverPathOffset"] + offset: self["EnvironmentOffset"] + offset].decode("utf-16-le")
+        self["Environment"] = data[self["EnvironmentOffset"] + offset: self["NameOffset"] + offset].decode("utf-16-le")
 
 
 class DRIVER_INFO_2_ARRAY(Structure):
     def __init__(self, data=None, pcReturned=None):
         Structure.__init__(self, data=data)
-        self["drivers"] = list()
+        self["drivers"] = []
         remaining = data
         if data is not None:
             for _ in range(pcReturned):
                 attr = DRIVER_INFO_2_BLOB(remaining)
                 self["drivers"].append(attr)
-                remaining = remaining[len(attr) :]
+                remaining = remaining[len(attr):]
 
 
 class DRIVER_INFO_UNION(NDRUNION):

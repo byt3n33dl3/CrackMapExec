@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Stolen from https://github.com/Wh1t3Fox/polenum
 
 from impacket.dcerpc.v5.rpcrt import DCERPC_v5
 from impacket.dcerpc.v5 import transport, samr
 from time import strftime, gmtime
-from cme.logger import cme_logger
+from nxc.logger import nxc_logger
 
 
 def d2b(a):
@@ -16,7 +14,7 @@ def d2b(a):
 
     t2bin = tbin[::-1]
     if len(t2bin) != 8:
-        for x in range(6 - len(t2bin)):
+        for _x in range(6 - len(t2bin)):
             t2bin.insert(0, 0)
     return "".join([str(g) for g in t2bin])
 
@@ -46,7 +44,7 @@ def convert(low, high, lockout=False):
         minutes = int(strftime("%M", gmtime(tmp)))
         hours = int(strftime("%H", gmtime(tmp)))
         days = int(strftime("%j", gmtime(tmp))) - 1
-    except ValueError as e:
+    except ValueError:
         return "[-] Invalid TIME"
 
     if days > 1:
@@ -82,6 +80,8 @@ class PassPolDump:
         self.nthash = ""
         self.aesKey = connection.aesKey
         self.doKerberos = connection.kerberos
+        self.host = connection.host
+        self.kdcHost = connection.kdcHost
         self.protocols = PassPolDump.KNOWN_PROTOCOLS.keys()
         self.pass_pol = {}
 
@@ -101,8 +101,8 @@ class PassPolDump:
                 protodef = PassPolDump.KNOWN_PROTOCOLS[protocol]
                 port = protodef[1]
             except KeyError:
-                cme_logger.debug(f"Invalid Protocol '{protocol}'")
-            cme_logger.debug(f"Trying protocol {protocol}")
+                nxc_logger.debug(f"Invalid Protocol '{protocol}'")
+            nxc_logger.debug(f"Trying protocol {protocol}")
             rpctransport = transport.SMBTransport(
                 self.addr,
                 port,
@@ -114,11 +114,13 @@ class PassPolDump:
                 self.nthash,
                 self.aesKey,
                 doKerberos=self.doKerberos,
+                kdcHost=self.kdcHost,
+                remote_host=self.host,
             )
             try:
                 self.fetchList(rpctransport)
             except Exception as e:
-                cme_logger.debug(f"Protocol failed: {e}")
+                nxc_logger.debug(f"Protocol failed: {e}")
             else:
                 # Got a response. No need for further iterations.
                 self.pretty_print()
@@ -226,9 +228,9 @@ class PassPolDump:
             0: "Domain Refuse Password Change:",
         }
 
-        cme_logger.debug("Found domain(s):")
+        nxc_logger.debug("Found domain(s):")
         for domain in self.__domains:
-            cme_logger.debug(f"{domain['Name']}")
+            nxc_logger.debug(f"{domain['Name']}")
 
         self.logger.success(f"Dumping password info for domain: {self.__domains[0]['Name']}")
 
@@ -239,7 +241,7 @@ class PassPolDump:
         self.logger.highlight(f"Password Complexity Flags: {self.__pass_prop or 'None'}")
 
         for i, a in enumerate(self.__pass_prop):
-            self.logger.highlight(f"\t{PASSCOMPLEX[i]} {str(a)}")
+            self.logger.highlight(f"\t{PASSCOMPLEX[i]} {a!s}")
 
         self.logger.highlight("")
         self.logger.highlight(f"Minimum password age: {self.__min_pass_age}")

@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import json
 
 from impacket.ldap import ldapasn1 as ldapasn1_impacket
-from cme.protocols.ldap.laps import LDAPConnect, LAPSv2Extract
+from nxc.protocols.ldap.laps import LAPSv2Extract
 
-class CMEModule:
+
+class NXCModule:
     """
     Module by technobro refactored by @mpgn (now compatible with LDAP protocol + filter by computer)
 
@@ -16,26 +15,20 @@ class CMEModule:
     """
 
     name = "laps"
-    description = "Retrieves the LAPS passwords"
+    description = "Retrieves all LAPS passwords which the account has read permissions for."
     supported_protocols = ["ldap"]
     opsec_safe = True
     multiple_hosts = False
 
     def options(self, context, module_options):
-        """
-        COMPUTER    Computer name or wildcard ex: WIN-S10, WIN-* etc. Default: *
-        """
-
+        """COMPUTER    Computer name or wildcard ex: WIN-S10, WIN-* etc. Default: *"""
         self.computer = None
         if "COMPUTER" in module_options:
             self.computer = module_options["COMPUTER"]
 
     def on_login(self, context, connection):
         context.log.display("Getting LAPS Passwords")
-        if self.computer is not None:
-            searchFilter = "(&(objectCategory=computer)(|(msLAPS-EncryptedPassword=*)(ms-MCS-AdmPwd=*)(msLAPS-Password=*))(name=" + self.computer + "))"
-        else:
-            searchFilter = "(&(objectCategory=computer)(|(msLAPS-EncryptedPassword=*)(ms-MCS-AdmPwd=*)(msLAPS-Password=*)))"
+        searchFilter = "(&(objectCategory=computer)(|(msLAPS-EncryptedPassword=*)(ms-MCS-AdmPwd=*)(msLAPS-Password=*))(name=" + self.computer + "))" if self.computer is not None else "(&(objectCategory=computer)(|(msLAPS-EncryptedPassword=*)(ms-MCS-AdmPwd=*)(msLAPS-Password=*)))"
         attributes = [
             "msLAPS-EncryptedPassword",
             "msLAPS-Password",
@@ -52,20 +45,12 @@ class CMEModule:
                 values = {str(attr["type"]).lower(): attr["vals"][0] for attr in computer["attributes"]}
                 if "mslaps-encryptedpassword" in values:
                     msMCSAdmPwd = values["mslaps-encryptedpassword"]
-                    d = LAPSv2Extract(
-                        bytes(msMCSAdmPwd),
-                        connection.username if connection.username else "",
-                        connection.password if connection.password else "",
-                        connection.domain,
-                        connection.nthash if connection.nthash else "",
-                        connection.kerberos,
-                        connection.kdcHost,
-                        339)
+                    d = LAPSv2Extract(bytes(msMCSAdmPwd), connection.username if connection.username else "", connection.password if connection.password else "", connection.domain, connection.nthash if connection.nthash else "", connection.kerberos, connection.kdcHost, 339, connection.dns_server)
                     try:
                         data = d.run()
                     except Exception as e:
-                        self.logger.fail(str(e))
-                        return
+                        context.log.fail(str(e))
+                        continue
                     r = json.loads(data)
                     laps_computers.append((str(values["samaccountname"]), r["n"], str(r["p"])))
                 elif "mslaps-password" in values:
@@ -78,6 +63,6 @@ class CMEModule:
 
             laps_computers = sorted(laps_computers, key=lambda x: x[0])
             for sAMAccountName, user, password in laps_computers:
-                context.log.highlight("Computer:{} User:{:<15} Password:{}".format(sAMAccountName, user, password))
+                context.log.highlight(f"Computer:{sAMAccountName} User:{user:<15} Password:{password}")
         else:
             context.log.fail("No result found with attribute ms-MCS-AdmPwd or msLAPS-Password !")

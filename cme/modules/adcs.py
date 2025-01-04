@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import re
 from impacket.ldap import ldap, ldapasn1
 from impacket.ldap.ldap import LDAPSearchError
 
 
-class CMEModule:
+class NXCModule:
     """
     Find PKI Enrollment Services in Active Directory and Certificate Templates Names.
 
@@ -29,7 +27,6 @@ class CMEModule:
         SERVER             PKI Enrollment Server to enumerate templates for. Default is None, use CN name
         BASE_DN            The base domain name for the LDAP query
         """
-        self.context = context
         self.regex = re.compile("(https?://.+)")
 
         self.server = None
@@ -40,23 +37,22 @@ class CMEModule:
             self.base_dn = module_options["BASE_DN"]
 
     def on_login(self, context, connection):
-        """
-        On a successful LDAP login we perform a search for all PKI Enrollment Server or Certificate Templates Names.
-        """
+        """On a successful LDAP login we perform a search for all PKI Enrollment Server or Certificate Templates Names."""
+        self.context = context
         if self.server is None:
             search_filter = "(objectClass=pKIEnrollmentService)"
         else:
             search_filter = f"(distinguishedName=CN={self.server},CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration,"
-            self.context.log.highlight("Using PKI CN: {}".format(self.server))
+            self.context.log.highlight(f"Using PKI CN: {self.server}")
 
-        context.log.display("Starting LDAP search with search filter '{}'".format(search_filter))
+        context.log.display(f"Starting LDAP search with search filter '{search_filter}'")
 
         try:
             sc = ldap.SimplePagedResultsControl()
-            base_dn_root = connection.ldapConnection._baseDN if self.base_dn is None else self.base_dn
+            base_dn_root = connection.ldap_connection._baseDN if self.base_dn is None else self.base_dn
 
             if self.server is None:
-                resp = connection.ldapConnection.search(
+                connection.ldap_connection.search(
                     searchFilter=search_filter,
                     attributes=[],
                     sizeLimit=0,
@@ -65,7 +61,7 @@ class CMEModule:
                     searchBase="CN=Configuration," + base_dn_root,
                 )
             else:
-                resp = connection.ldapConnection.search(
+                connection.ldap_connection.search(
                     searchFilter=search_filter + base_dn_root + ")",
                     attributes=["certificateTemplates"],
                     sizeLimit=0,
@@ -74,12 +70,10 @@ class CMEModule:
                     searchBase="CN=Configuration," + base_dn_root,
                 )
         except LDAPSearchError as e:
-            context.log.fail("Obtained unexpected exception: {}".format(str(e)))
+            context.log.fail(f"Obtained unexpected exception: {e}")
 
     def process_servers(self, item):
-        """
-        Function that is called to process the items obtain by the LDAP search when listing PKI Enrollment Servers.
-        """
+        """Function that is called to process the items obtain by the LDAP search when listing PKI Enrollment Servers."""
         if not isinstance(item, ldapasn1.SearchResultEntry):
             return
 
@@ -103,19 +97,17 @@ class CMEModule:
                             urls.append(match.group(1))
         except Exception as e:
             entry = host_name or "item"
-            self.context.log.fail("Skipping {}, cannot process LDAP entry due to error: '{}'".format(entry, str(e)))
+            self.context.log.fail(f"Skipping {entry}, cannot process LDAP entry due to error: '{e!s}'")
 
         if host_name:
-            self.context.log.highlight("Found PKI Enrollment Server: {}".format(host_name))
+            self.context.log.highlight(f"Found PKI Enrollment Server: {host_name}")
         if cn:
-            self.context.log.highlight("Found CN: {}".format(cn))
+            self.context.log.highlight(f"Found CN: {cn}")
         for url in urls:
-            self.context.log.highlight("Found PKI Enrollment WebService: {}".format(url))
+            self.context.log.highlight(f"Found PKI Enrollment WebService: {url}")
 
     def process_templates(self, item):
-        """
-        Function that is called to process the items obtain by the LDAP search when listing Certificate Templates Names for a specific PKI Enrollment Server.
-        """
+        """Function that is called to process the items obtain by the LDAP search when listing Certificate Templates Names for a specific PKI Enrollment Server."""
         if not isinstance(item, ldapasn1.SearchResultEntry):
             return
 
@@ -134,4 +126,4 @@ class CMEModule:
 
         if templates:
             for t in templates:
-                self.context.log.highlight("Found Certificate Template: {}".format(t))
+                self.context.log.highlight(f"Found Certificate Template: {t}")
