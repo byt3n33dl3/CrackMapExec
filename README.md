@@ -1,10 +1,15 @@
-# CrackMapExec
+<div align="center">
+<h2>CrackMapExec</h2>
+<p></div>
 
 <p align="center">
-  <img src="https://cloud.githubusercontent.com/assets/5151193/17577511/d312ceb4-5f3b-11e6-8de5-8822246289fd.jpg" alt="cme"/>
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://cloud.githubusercontent.com/assets/5151193/17577511/d312ceb4-5f3b-11e6-8de5-8822246289fd.jpg">
+        <img src="https://cloud.githubusercontent.com/assets/5151193/17577511/d312ceb4-5f3b-11e6-8de5-8822246289fd.jpg" alt="CrackMapExec"/>
+    </picture>
 </p>
 
-## Continuing the `CrackMapExec` Project
+# CrackMapExec
 
 [![License: BSD 3-Clause](https://img.shields.io/badge/License-BSDv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
@@ -57,7 +62,7 @@ python3 crackmapexec
 
 ## Code Contributors
 
-Awesome code contributors of CrackMapExec
+Awesome code contributors of **CrackMapExec**
 
 [![](https://github.com/byt3n33dl3.png?size=50)](https://github.com/byt3n33dl3)
 [![](https://github.com/Marshall-Hallenbeck.png?size=50)](https://github.com/Marshall-Hallenbeck)
