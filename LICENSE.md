@@ -1,6 +1,6 @@
 # BSD 3-Clause License / `Master`
 
-`Copyright (c) 2022 - 2024`, byt3bl33d3r ( Marcello ), mpgn_x64, byt3n33dl3 ( Sulaiman A. ), cube0x0
+`Copyright (c) 2022 - 2024`, Marcello, mpgn_x64, Sulaiman, cube0x0
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

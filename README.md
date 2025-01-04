@@ -13,7 +13,7 @@ Buffing the **Password Spraying** ability attacks, which involve trying a few co
 ## Kerberos Attacks
 Upgrading this capabilities for performing Kerberos-based attacks such as AS-REP roasting and Kerberoasting.
 
-```shell
+```sh
 cme kerberos <target> -u <username> -p <password> --asreproast
 cme kerberos <target> -u <username> -p <password> --kerberoast
 ```
